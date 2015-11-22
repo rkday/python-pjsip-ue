@@ -1,0 +1,9 @@
+a.out
+pjproject/
+root/
+*.o
+*.so
+*.a
+*.pyc
+/build/
+/dist/
