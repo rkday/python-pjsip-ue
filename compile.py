@@ -4,7 +4,6 @@ ffi = FFI()
 ffi.set_source("sipue._example",
     """ // passed to the real C compiler
         #include "ue_c_interface.h"
-        #include "pjsip_c_if.h"
     """,
     libraries=["ue", "stdc++", 'ssl', 'crypto', 'm', 'rt', 'pthread'],
     library_dirs=["."],
@@ -13,7 +12,9 @@ ffi.set_source("sipue._example",
     # include_dirs=[..], extra_objects=[..], and so on)
 
 ffi.cdef("""     // some declarations from the man page
-  void* ue_new(const char* server,
+  typedef void pj_log_func(int level, const char *data, int len);
+  void* ue_new(pj_log_func* logger,
+       const char* server,
        const char* myurl,
        const char* username,
        const char* password,
@@ -24,8 +25,6 @@ ffi.cdef("""     // some declarations from the man page
   int ue_register(void* ue, int expiry);
   int ue_send_message(void* ue, const char* dest, const char* content);
 
-int init_pjsip();
-void pjsip_teardown();
 """)
 
 if __name__ == "__main__":

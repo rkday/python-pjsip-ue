@@ -1,8 +1,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+typedef void pj_log_func(int level, const char *data, int len);
 
-  void* ue_new(const char* server,
+  void* ue_new(pj_log_func* logger,
+      const char* server,
        const char* myurl,
        const char* username,
        const char* password,

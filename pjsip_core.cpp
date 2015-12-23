@@ -29,7 +29,7 @@ void* handle_events(void* x)
 {
   pj_thread_desc desc = {0};
   pj_thread_t* t = NULL;
-  pj_thread_register("a", desc, &t);
+  pj_thread_register("event_thread", desc, &t);
   while (!g_stop)
   {
     pj_time_val timeout = {0, 10};
@@ -80,14 +80,14 @@ static pjsip_module msg_logger =
 
 };
 
-#define CHECK(X) { status = X ; assert(status == PJ_SUCCESS); }
+#define CHECK(X) { status = X ; if (status != PJ_SUCCESS) { PJ_LOG(1, (__FILE__, "Call to %s failed with code %d", #X, status)); return 1; }; }
 
 /*
  * Callback when incoming requests outside any transactions and any
  * dialogs are received. We're only interested to hande incoming INVITE
  * request, and we'll reject any other requests with 500 response.
  */
-int init_pjsip()
+int init_pjsip(pj_log_func* logger)
 {
   if (g_endpt != NULL)
   {
@@ -98,10 +98,12 @@ int init_pjsip()
   mod_dispatcher.on_rx_request = &on_rx_request;
   mod_dispatcher.on_tsx_state = &on_tsx_state;
 
+  pj_log_set_level(99);
+  pj_log_set_decor(PJ_LOG_HAS_SENDER | PJ_LOG_HAS_THREAD_ID | PJ_LOG_HAS_INDENT);
+  pj_log_set_log_func(logger);
   pj_status_t status;
   CHECK(pj_init());
 
-  pj_log_set_level(2);
 
   CHECK(pjlib_util_init());
 

@@ -1,13 +1,14 @@
 #include "ue_c_interface.h"
 #include "ue.hpp"
 
-void* ue_new(const char* server,
+void* ue_new(pj_log_func* logger,
+       const char* server,
        const char* myurl,
        const char* username,
        const char* password,
        const char* proxy)
 {
-  UE* ue = new UE(server, myurl, username, password, proxy);
+  UE* ue = UE::init(logger, server, myurl, username, password, proxy);
   return ue;
 }
 

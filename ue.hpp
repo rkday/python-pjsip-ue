@@ -12,12 +12,12 @@ pj_bool_t on_rx_request( pjsip_rx_data *rdata );
 
 class UE {
   public:
-    UE(std::string realm,
-       std::string myurl,
-       std::string username,
-       std::string password,
-       std::string outbound_proxy="");
-
+    static UE* init(pj_log_func* logger,
+             std::string realm,
+             std::string myurl,
+             std::string username,
+             std::string password,
+             std::string outbound_proxy="");
     ~UE() {};
 
     int do_register(int expiry=300);
@@ -28,6 +28,15 @@ class UE {
     void on_rx_request(pjsip_rx_data *rdata);
     void on_tsx_state(pjsip_transaction *tsx, pjsip_event *event);
   private:
+    UE();
+
+    pj_status_t init_int(pj_log_func* logger,
+             std::string realm,
+             std::string myurl,
+             std::string username,
+             std::string password,
+             std::string outbound_proxy="");
+
     void stra(pj_str_t*, const char*);
 
     pj_pool_t* _pool;

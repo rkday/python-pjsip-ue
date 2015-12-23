@@ -30,20 +30,49 @@ void reg_tsx_cb(struct pjsip_regc_tsx_cb_param *param)
 {
 }
 
-UE::UE(std::string realm,
-    std::string myurl,
-    std::string username,
-    std::string password,
-    std::string outbound_proxy)
+#define CHECK(X) { status = X ; if (status != PJ_SUCCESS) { PJ_LOG(5, (__FILE__, "Call to %s failed with code %d", #X, status)); return 1; }; }
+
+UE::UE()
 : _reg_mutex(PTHREAD_MUTEX_INITIALIZER),
   _reg_cond(PTHREAD_COND_INITIALIZER),
   _msg_mutex(PTHREAD_MUTEX_INITIALIZER),
   _msg_cond(PTHREAD_COND_INITIALIZER)
+{}
+
+UE* UE::init(pj_log_func* logger,
+         std::string realm,
+         std::string myurl,
+         std::string username,
+         std::string password,
+         std::string outbound_proxy)
 {
-  init_pjsip();
-  std::string server_uri = std::string("sip:") + realm + std::string(";lr;transport=tcp");
+  UE* ret = new UE();
+  if (ret->init_int(logger, realm, myurl, username, password, outbound_proxy) == PJ_SUCCESS)
+  {
+    return ret;
+  }
+  else
+  {
+    delete ret;
+    return NULL;
+  }
+}
+
+pj_status_t UE::init_int(pj_log_func* logger,
+             std::string realm,
+             std::string myurl,
+             std::string username,
+             std::string password,
+             std::string outbound_proxy)
+{
   pj_status_t status;
+  char errmsg[PJ_ERR_MSG_SIZE];
   pj_sockaddr addr;
+  pj_str_t remote;
+  pj_sockaddr remote_addr;
+
+  init_pjsip(logger);
+  std::string server_uri = std::string("sip:") + realm + std::string(";lr;transport=tcp");
   _pool = pj_pool_create(get_global_pool_factory(), "a", 256, 256, NULL);
 
   pj_sockaddr_init(pj_AF_INET(), &addr, NULL, (pj_uint16_t)0);
@@ -56,9 +85,7 @@ UE::UE(std::string realm,
     outbound_proxy = realm;
   }
   
-  pj_str_t remote;
   pj_cstr(&remote, outbound_proxy.c_str());
-  pj_sockaddr remote_addr;
   pj_sockaddr_init(pj_AF_INET(), &remote_addr, &remote, (pj_uint16_t)5060);
 
   pjsip_tpselector sel2;
@@ -70,12 +97,24 @@ UE::UE(std::string realm,
       pj_sockaddr_get_len(&remote_addr),
       &sel2,
       &_transport);
-  assert(status == PJ_SUCCESS);
+  
+  if (status != PJ_SUCCESS)
+  {
+    pj_strerror(status, errmsg, sizeof(errmsg));
+    PJ_LOG(1, (__FILE__, "TCP connection to %s failed: %s (%d)", outbound_proxy.c_str(), errmsg, status));
+    return status;
+  }
   
   transport_mapping[_transport] = this;
 
   status = pjsip_regc_create(get_global_endpoint(), this, &regc_cb, &_regc);
-  assert(status == PJ_SUCCESS);
+
+  if (status != PJ_SUCCESS)
+  {
+    pj_strerror(status, errmsg, sizeof(errmsg));
+    PJ_LOG(1, (__FILE__, "Creating the REGISTER session failed: %s (%d)", errmsg, status));
+    return status;
+  }
 
   pjsip_regc_set_reg_tsx_cb(_regc, &reg_tsx_cb);
 
@@ -83,6 +122,11 @@ UE::UE(std::string realm,
   sel.type = PJSIP_TPSELECTOR_TRANSPORT;
   sel.u.transport = _transport;
   pjsip_regc_set_transport(_regc, &sel);
+
+  pjsip_auth_clt_pref prefs = {};
+  prefs.initial_auth = PJ_TRUE;
+
+  pjsip_regc_set_prefs(_regc, &prefs);
 
   pjsip_cred_info cred;
   stra(&cred.realm, realm.c_str());
@@ -102,6 +146,8 @@ UE::UE(std::string realm,
   stra(&_my_uri, myurl.c_str());
   stra(&_username, username.c_str());
   stra(&_contact, contact);
+
+  return PJ_SUCCESS;
 }
 
 void UE::on_rx_request(pjsip_rx_data *rdata)
@@ -142,6 +188,7 @@ void UE::stra(pj_str_t* out, const char* in)
 
 int UE::do_register(int expiry)
 {
+  char errmsg[PJ_ERR_MSG_SIZE];
   pthread_mutex_lock(&_reg_mutex);
   pj_str_t contact[1] = {_contact};
   pj_status_t status = pjsip_regc_init(_regc, &_server,
@@ -150,18 +197,32 @@ int UE::do_register(int expiry)
       1,
       contact,
       expiry);
-  assert(status == PJ_SUCCESS);
+  
+  if (status != PJ_SUCCESS)
+  {
+    pj_strerror(status, errmsg, sizeof(errmsg));
+    PJ_LOG(1, (__FILE__, "Creating the REGISTER session failed: %s (%d)", errmsg, status));
+    return status;
+  }
 
   pjsip_tx_data* tdata;
-  pjsip_regc_register(_regc, 1, &tdata);
+  status = pjsip_regc_register(_regc, 1, &tdata);
+ 
+  if (status != PJ_SUCCESS)
+  {
+    pj_strerror(status, errmsg, sizeof(errmsg));
+    PJ_LOG(1, (__FILE__, "Creating the REGISTER session failed: %s (%d)", errmsg, status));
+    return status;
+  }
+  
+  status = pjsip_regc_send(_regc, tdata);
 
-  pjsip_authorization_hdr* auth = pjsip_authorization_hdr_create(tdata->pool);
-  stra(&auth->scheme, "Digest");
-  auth->credential.digest.realm = _realm;
-  auth->credential.digest.username = _username;
-  pjsip_msg_insert_first_hdr(tdata->msg, (pjsip_hdr*)auth);
-
-  pjsip_regc_send(_regc, tdata);
+  if (status != PJ_SUCCESS)
+  {
+    pj_strerror(status, errmsg, sizeof(errmsg));
+    PJ_LOG(1, (__FILE__, "Sending REGISTER failed: %s (%d)", errmsg, status));
+    return status;
+  }
 
   pthread_cond_wait(&_reg_cond, &_reg_mutex);
   int ret = _last_register_response->line.status.code;
