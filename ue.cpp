@@ -150,6 +150,12 @@ pj_status_t UE::init_int(pj_log_func* logger,
   return PJ_SUCCESS;
 }
 
+UE::~UE()
+{
+  pjsip_regc_destroy(_regc);
+  pj_pool_release(_pool);
+}
+
 void UE::on_rx_request(pjsip_rx_data *rdata)
 {
  pjsip_msg* msg = rdata->msg_info.msg;
@@ -225,7 +231,7 @@ int UE::do_register(int expiry)
   }
 
   pthread_cond_wait(&_reg_cond, &_reg_mutex);
-  int ret = _last_register_response->line.status.code;
+  int ret = _last_register_response_code;
   pthread_mutex_unlock(&_reg_mutex);
   return ret;
 }
@@ -296,7 +302,7 @@ void UE::on_completed_registration(struct pjsip_regc_cbparam *param)
 {
   pthread_mutex_lock(&_reg_mutex);
 
-  _last_register_response = pjsip_msg_clone(_pool, param->rdata->msg_info.msg);
+  _last_register_response_code = param->code;
 
   pthread_cond_signal(&_reg_cond);
 

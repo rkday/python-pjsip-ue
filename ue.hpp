@@ -18,7 +18,7 @@ class UE {
              std::string username,
              std::string password,
              std::string outbound_proxy="");
-    ~UE() {};
+    ~UE();
 
     int do_register(int expiry=300);
     
@@ -51,7 +51,7 @@ class UE {
 
     pthread_mutex_t _reg_mutex;
     pthread_cond_t _reg_cond;
-    pjsip_msg* _last_register_response;
+    int _last_register_response_code;
 
     pthread_mutex_t _msg_mutex;
     pthread_cond_t _msg_cond;

@@ -32,3 +32,6 @@ class UE(object):
         rc = lib.ue_send_message(self._ueptr, target.encode('utf-8'), message.encode('utf-8'))
         _log.info("Got {} response to MESSAGE".format(rc))
         return rc
+
+    def close(self):
+        lib.ue_delete(self._ueptr)
